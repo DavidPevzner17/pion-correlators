@@ -20,6 +20,7 @@ int const n_equil = 5000;
 int const n_measure=10;
 int const lag=5;
 int const propSize = 12*SIZE*SIZE*SIZE*SIZEt;
+int const smearNum=1;
 double const epsilon=0.12;
 double const betaConst=5.48;
 double const e = 2.718281828459045;
@@ -420,7 +421,7 @@ double* compute_cnt(double upMass, double downMass){ //pion correlator calculati
                 }
             }
         }
-        for(int s=0;s<1;s++){
+        for(int s=0;s<smearNum;s++){
             APE_smear();
         }
         prepare_updirac_solver(upMass);

@@ -15,12 +15,11 @@ mt19937 mt2(rd2());
 
 int const SIZE=8;
 int const SIZEt=16;
-int const setSize=10000;
+int const setSize=10000;//1000
 int const n_equil = 5000;
-int const n_measure=10;
+int const n_measure=10; //100
 int const lag=5;
 int const propSize = 12*SIZE*SIZE*SIZE*SIZEt;
-int const smearNum=1;
 double const epsilon=0.12;
 double const betaConst=5.48;
 double const e = 2.718281828459045;
@@ -35,7 +34,7 @@ SparseMatrix<complex<double>> downdiracMatrix;
 BiCGSTAB<SparseMatrix<complex<double>>> upSolver;
 BiCGSTAB<SparseMatrix<complex<double>>> downSolver;
 
-void coldStart(){ //set all links to the identity matrix
+void coldStart(){ //set all links to the identity matrix prior to equilibriation
     Matrix3cd identityMatrix; 
     identityMatrix << one,zero,zero,zero,one,zero,zero,zero,one;
     for(int x=0;x<SIZE;x++){
@@ -52,7 +51,7 @@ void coldStart(){ //set all links to the identity matrix
     return;
 }
 
-Matrix2cd SU2_generator(void){
+Matrix2cd SU2_generator(void){ //generate a random SU2 Matrix
     uniform_real_distribution<double> dist(-0.5, 0.5);
     double r[4];
     for(int i=0;i<4;i++){
@@ -72,7 +71,7 @@ Matrix2cd SU2_generator(void){
     return SU2;
 }
 
-Matrix3cd SU3_generator(void){
+Matrix3cd SU3_generator(void){//Generate a random SU3 matrix by embedding SU2 matrices into 3x3 matrices R,S,T and multiplying these together to create the most general possible SU3 matrix
     Matrix2cd SU2[3];
     Matrix3cd R;
     Matrix3cd S;
@@ -86,20 +85,20 @@ Matrix3cd SU3_generator(void){
     return R*S*T;
 }
 
-void generate_X(){
+void generate_X(){ //generates X which is a set used to randomly select a matrix to multiply by in order to advance the Markov Chain
     for(int i=0;i<setSize;i=i+2){
         Matrix3cd SU3 = SU3_generator();
-        Matrix3cd SU3_hermitian = SU3.adjoint();
+        Matrix3cd SU3_hermitian = SU3.adjoint(); //we include the adjoint so that selection probability will be symmetric
         X[i]=SU3;
         X[i+1]=SU3_hermitian;
     }
 }
 
-int mod(int x, int m){
-    return (x % m + m) % m; // Handles negative values safely
+int mod(int x, int m){ //used to enforce periodic boundary conditions of link variables
+    return (x % m + m) % m; // handles negative values safely
 }
 
-Matrix3cd staple_calc(int nx, int ny, int nz, int nt, int direction){
+Matrix3cd staple_calc(int nx, int ny, int nz, int nt, int direction){ //calculates staple for an n 4-vector and a direction
     Matrix3cd staple, U1, U2, U3, staple1, U4, U5, U6, staple2;
     staple << zero,zero,zero,zero,zero,zero,zero,zero,zero;
     int b[4];
@@ -116,21 +115,21 @@ Matrix3cd staple_calc(int nx, int ny, int nz, int nt, int direction){
         b[3]=0;
         b[nu]=1;
         if(nu != direction){
-            // First staple term (upper staple)
+            // first staple term (upper staple)
             U1 = link[mod(nx + a[0], SIZE)][mod(ny + a[1], SIZE)][mod(nz + a[2], SIZE)][mod(nt + a[3], SIZEt)][nu];
             U2 = (link[mod(nx + b[0], SIZE)][mod(ny + b[1], SIZE)][mod(nz + b[2], SIZE)][mod(nt + b[3], SIZE)][direction]).adjoint();
             U3 = (link[nx][ny][nz][nt][nu]).adjoint();
 
             staple1 = U1*U2*U3;
 
-            // Second staple term (lower staple)
+            // second staple term (lower staple)
             U4 = (link[mod(nx + a[0] - b[0], SIZE)][mod(ny + a[1] - b[1], SIZE)][mod(nz + a[2] - b[2], SIZE)][mod(nt + a[3] - b[3], SIZEt)][nu]).adjoint();
             U5 = (link[mod(nx - b[0], SIZE)][mod(ny - b[1], SIZE)][mod(nz - b[2], SIZE)][mod(nt - b[3], SIZEt)][direction]).adjoint();
             U6 = link[mod(nx - b[0], SIZE)][mod(ny - b[1], SIZE)][mod(nz - b[2], SIZE)][mod(nt - b[3], SIZEt)][nu];
 
             staple2 = U4*U5*U6;
 
-            // Add to total staple
+            // add to total staple
             staple = staple + staple1 + staple2;
         }
     }
@@ -141,9 +140,9 @@ void equilibriate(int nx, int ny, int nz, int nt, int direction){//update link[]
     //step1: generate random SU(3) matrix from set X
     uniform_int_distribution<int> dist(0, setSize-1);
     int x = dist(mt);
-    Matrix3cd SU3 = X[x];
+    Matrix3cd SU3 = X[x]; //random transformation matrix used to propose a new link
 
-    static int total = 0;
+    static int total = 0; //used to calculate acceptance rate for picking optimal epsilon constant values
     static int accepted = 0;
     total++;
 
@@ -167,7 +166,7 @@ void equilibriate(int nx, int ny, int nz, int nt, int direction){//update link[]
     //else:reject
 }
 
-void sweep(void){
+void sweep(void){ //an equilibriation over the entire global link variable
     for(int x=0;x<SIZE;x++){
         for(int y=0;y<SIZE;y++){
             for(int z=0;z<SIZE;z++){
@@ -181,7 +180,7 @@ void sweep(void){
     }
 }
 
-Matrix3cd perp_staple_calc(int nx,int ny,int nz,int nt,int direction){
+Matrix3cd perp_staple_calc(int nx,int ny,int nz,int nt,int direction){ //calculate the perpendicular staple used in APE Smearing
     Matrix3cd staple; 
     staple << zero,zero,zero,zero,zero,zero,zero,zero,zero;
     Matrix3cd U1,U2,U3,staple1,U4,U5,U6,staple2;
@@ -220,7 +219,7 @@ Matrix3cd perp_staple_calc(int nx,int ny,int nz,int nt,int direction){
     return staple;
 }
 
-Matrix3cd project_SU3(Matrix3cd V){
+Matrix3cd project_SU3(Matrix3cd V){ //projects a matrix V to SU3 by a process akin to the Gram-Schmidt process for finding and orthogonal basis
     Vector3cd v1, v2;
     v1 << V(0,0), V(1,0), V(2,0);
     v2 << V(0,1), V(1,1), V(2,1);
@@ -230,17 +229,18 @@ Matrix3cd project_SU3(Matrix3cd V){
     Vector3cd u2 = w2/w2.norm();
     Vector3cd u3 = u1.cross(u2);
 
-    // Final matrix: u1, u2, u3 as columns
+    // final matrix: u1, u2, u3 as columns
     Matrix3cd U;
     U << u1(0),u2(0),u3(0),u1(1),u2(1),u3(1),u1(2),u2(2),u3(2);
     return U;
 }
 
 void APE_smear(void){//smear global link variable
+    //note: smearing process changes the link while using that same link to generate changes --> use newLink
     Matrix3cd staple;
     Matrix3cd v;
-    static Matrix3cd newLink[SIZE][SIZE][SIZE][SIZEt][4];
-    for(int x=0;x<SIZE;x++){
+    static Matrix3cd newLink[SIZE][SIZE][SIZE][SIZEt][4]; //the smeared link that is set to replace the old link
+    for(int x=0;x<SIZE;x++){ //this loop generates the newLink
         for(int y=0;y<SIZE;y++){
             for(int z=0;z<SIZE;z++){
                 for(int t=0;t<SIZEt;t++){
@@ -253,7 +253,7 @@ void APE_smear(void){//smear global link variable
             }
         }
     }
-    for(int x=0;x<SIZE;x++){
+    for(int x=0;x<SIZE;x++){ //this loop replaces the old link with the newLink
         for(int y=0;y<SIZE;y++){
             for(int z=0;z<SIZE;z++){
                 for(int t=0;t<SIZEt;t++){
@@ -266,11 +266,12 @@ void APE_smear(void){//smear global link variable
     }
 }
 
-int getIndex(Vector4d m, int color, int spin){
+int getIndex(Vector4d m, int color, int spin){ //the matrices we are considering are in nVect, color, and spin so they are square matrices 12*SIZE^3*SIZEt in length
+    //Therefore, we need to relate each index of the matrix with a particular n,color,spin combination
     return 12*SIZE*SIZE*SIZEt*m(0)+12*SIZE*SIZEt*m(1)+12*SIZEt*m(2)+12*m(3)+color*4+spin;
 }
 
-VectorXcd pointSource(int b0, int beta0, Vector4d m){
+VectorXcd pointSource(int b0, int beta0, Vector4d m){ //create and return point source vector 
     VectorXcd source(propSize);
     source.setZero();
     int i = getIndex(m,b0,beta0);
@@ -278,10 +279,10 @@ VectorXcd pointSource(int b0, int beta0, Vector4d m){
     return source;
 }
 
-SparseMatrix<complex<double>> dirac_operator(double fermionMass){
+SparseMatrix<complex<double>> dirac_operator(double fermionMass){ //simulates the Dirac Operator used in the Wilson Fermion Action
     SparseMatrix<complex<double>> dirac(propSize,propSize);
     Matrix4cd I = Matrix4cd:: Identity();
-    Matrix4cd gamma[4];
+    Matrix4cd gamma[4]; //define Euclidean gamma matrices below: 
     gamma[0] << 0,0,0,complex<double>(0,-1),0,0,complex<double>(0,-1),0,0,complex<double>(0,1),0,0,complex<double>(0,1),0,0,0;
     gamma[1] << 0,0,0,-1,0,0,1,0,0,1,0,0,-1,0,0,0;
     gamma[2] << 0,0,complex<double>(0,-1),0,0,0,0,complex<double>(0,1),complex<double>(0,1),0,0,0,0,complex<double>(0,-1),0,0;
@@ -293,14 +294,15 @@ SparseMatrix<complex<double>> dirac_operator(double fermionMass){
     int x[4];
     int i,j,dx,dy,dz,dt;
     complex<double> val;
-    for(x[0]=0;x[0]<SIZE;x[0]++){
+    for(x[0]=0;x[0]<SIZE;x[0]++){ //outer loop over all n,color,spin positions that we are filling
         for(x[1]=0;x[1]<SIZE;x[1]++){
             for(x[2]=0;x[2]<SIZE;x[2]++){
                 for(x[3]=0;x[3]<SIZEt;x[3]++){
                     for(int a=0;a<3;a++){
                         for(int alpha=0;alpha<4;alpha++){
                             i=getIndex(Vector4d(x[0],x[1],x[2],x[3]),a,alpha);
-                            tripletList.push_back(T(i,i,fermionMass+4/lattice_spacing));
+                            tripletList.push_back(T(i,i,fermionMass+4/lattice_spacing)); //diagonal terms
+                            //off diagonal neighbor terms handled below:
                             for(int mu=0;mu<4;mu++){
                                 dx = (mu==0);
                                 dy = (mu==1);
@@ -346,7 +348,7 @@ SparseMatrix<complex<double>> dirac_operator(double fermionMass){
     return dirac;
 }
 
-void prepare_updirac_solver(double fermionMass){
+void prepare_updirac_solver(double fermionMass){ //initialize the Eigen Bicgstab solver with up mass passed into function
     updiracMatrix = dirac_operator(fermionMass);
     upSolver.compute(updiracMatrix);
     if (upSolver.info() != Success) {
@@ -355,7 +357,7 @@ void prepare_updirac_solver(double fermionMass){
     }
 }
 
-void prepare_downdirac_solver(double fermionMass){
+void prepare_downdirac_solver(double fermionMass){//initialize the Eigen Bicgstab solver with down mass passed into function
     downdiracMatrix = dirac_operator(fermionMass);
     downSolver.compute(downdiracMatrix);
     if (downSolver.info() != Success) {
@@ -364,7 +366,7 @@ void prepare_downdirac_solver(double fermionMass){
     }
 }
 
-double* compute_obs(){
+double* compute_obs(){ //compute part of the correlation function |G(x,0)|^2 that is used in compute_cnt
     double* sum = new double[SIZEt];
     for(int i=0;i<SIZEt;i++){
         sum[i]=0;
@@ -421,14 +423,14 @@ double* compute_cnt(double upMass, double downMass){ //pion correlator calculati
                 }
             }
         }
-        for(int s=0;s<smearNum;s++){
+        for(int s=0;s<1;s++){
             APE_smear();
         }
         prepare_updirac_solver(upMass);
         prepare_downdirac_solver(downMass);
         obs = compute_obs();
         for(int t=0;t<SIZEt;t++){
-            cnt[t]=cnt[t]+obs[t]/n_measure;
+            cnt[t]=cnt[t]+obs[t]/n_measure; //take average to calcualte the integral for the correlation function
         }
         for(int x=0;x<SIZE;x++){
             for(int y=0;y<SIZE;y++){
@@ -447,15 +449,15 @@ double* compute_cnt(double upMass, double downMass){ //pion correlator calculati
 }
 
 int main(void){
-    coldStart();
-    generate_X();
+    coldStart(); //intialize global link to identity matrix
+    generate_X(); //global set of SU3 matrices used to propose new links in the equilibriation process
     for(int i=0;i<n_equil;i++){ //equilibriate system
         sweep();
     }
-    double* x;
+    double* x; //each index of array is a value of n_t 
     x = compute_cnt(32,32); //input up and down quark mass here
     for(int t=0;t<SIZEt;t++){
-        cout << "(" << t << "," << x[t]/x[0] << "),";
+        cout << "(" << t << "," << x[t]/x[0] << "),"; //the output is (nt,C(nt))
     }
  
     //g++ -I"c:/Eigen" -O3 -march=native -funroll-loops -fopenmp -ffast-math -ftree-vectorize twoFlavor.cpp -o twoFlavor.exe; ./twoFlavor.exe
